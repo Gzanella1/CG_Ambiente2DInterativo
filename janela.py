@@ -5,6 +5,7 @@ from formas.Circulo import Circulo
 from formas.Linha import Linha
 from formas.PolignoNaoConvexo import PoligonoNaoConvexo
 from formas.Quadrado import Quadrado
+from selection_manager import SelectionManager
 
 class JanelaGLFW:
     def __init__(self, largura=500, altura=500, left=-20, right=20, bottom=-20, top=20, titulo="Janela"):
@@ -22,6 +23,7 @@ class JanelaGLFW:
         self.tentative = None
         self._window = None
         self._should_terminate = False
+
 
     # ---------------- Configuração da visualização ----------------
     def configure_visualization(self):

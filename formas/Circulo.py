@@ -19,3 +19,9 @@ class Circulo(Forma):
             ang = math.radians(i)
             glVertex2f(x + self.raio * math.cos(ang), y + self.raio * math.sin(ang))
         glEnd()
+
+    def contem_ponto(self, x, y, cx, cy):
+        """Retorna True se o ponto (x, y) estiver dentro do círculo centrado em (cx, cy)."""
+        dx = x - cx
+        dy = y - cy
+        return (dx ** 2 + dy ** 2) <= (self.raio ** 2)

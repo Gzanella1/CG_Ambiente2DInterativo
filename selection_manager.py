@@ -56,33 +56,4 @@ class SelectionManager:
     def finalizar_arraste(self):
         self.arrastando = False
 
-    # ---------------- Desenhar contornos ----------------
-    def desenhar_contornos(self):
-        """Desenha contorno de hover e seleção"""
-        for item, cor in [
-            (self.forma_hover, (0.7, 0.7, 0.7)),   # cor cinza clara (preview)
-            (self.forma_selecionada, (1, 1, 1)),   # cor branca (selecionado)
-        ]:
-            if not item:
-                continue
-            forma, fx, fy, _ = item
-            if not hasattr(forma, 'get_vertices'):
-                continue
-            vertices = [(vx + fx, vy + fy) for vx, vy in forma.get_vertices()]
-
-            # --- borda tracejada ---
-            glEnable(GL_LINE_STIPPLE)
-            glLineStipple(1, 0x0F0F)
-            glColor3f(*cor)
-            glBegin(GL_LINE_LOOP)
-            for vx, vy in vertices:
-                glVertex2f(vx, vy)
-            glEnd()
-            glDisable(GL_LINE_STIPPLE)
-
-            # --- quadradinhos ---
-            glPointSize(6)
-            glBegin(GL_POINTS)
-            for vx, vy in vertices:
-                glVertex2f(vx, vy)
-            glEnd()
+  

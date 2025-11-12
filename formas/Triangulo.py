@@ -26,3 +26,19 @@ class Triangulo(Forma):
         glVertex2f(self.v2[0] + x, self.v2[1] + y)
         glVertex2f(self.v3[0] + x, self.v3[1] + y)
         glEnd()
+
+    def contem_ponto(self, x, y, cx, cy):
+        """Retorna True se o ponto (x, y) estiver dentro do triângulo deslocado por (cx, cy)."""
+        # aplica deslocamento
+        x1, y1 = self.v1[0] + cx, self.v1[1] + cy
+        x2, y2 = self.v2[0] + cx, self.v2[1] + cy
+        x3, y3 = self.v3[0] + cx, self.v3[1] + cy
+
+        # área total do triângulo
+        A = abs((x1*(y2 - y3) + x2*(y3 - y1) + x3*(y1 - y2)) / 2.0)
+        # áreas parciais com o ponto
+        A1 = abs((x*(y2 - y3) + x2*(y3 - y) + x3*(y - y2)) / 2.0)
+        A2 = abs((x1*(y - y3) + x*(y3 - y1) + x3*(y1 - y)) / 2.0)
+        A3 = abs((x1*(y2 - y) + x2*(y - y1) + x*(y1 - y2)) / 2.0)
+
+        return abs(A - (A1 + A2 + A3)) < 1e-1  # tolerância numérica

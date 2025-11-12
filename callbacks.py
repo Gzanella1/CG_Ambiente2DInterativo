@@ -22,9 +22,6 @@ class Callbacks:
         print(f"[resize] {width}x{height}")
 
 
-
-
-
     def on_mouse(self, win, button, action, mods):
         mx, my = glfw.get_cursor_pos(win)
         xw, yw = self.window_to_world(mx, my)
