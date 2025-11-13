@@ -1,172 +1,138 @@
-import math
+# tools.py
 from formas.Circulo import Circulo
-from formas.PolignoNaoConvexo import PoligonoNaoConvexo
-from formas.Linha import Linha
-from formas.Quadrado import Quadrado
-from formas.Triangulo import Triangulo
+from formas.Quadrado import Quadrado # (Você precisa criar estes)
+from formas.Quadrado import Quadrado 
+from formas.Linha import Linha       # <-- ADICIONE
+from formas.Triangulo import Triangulo # <-- ADICIONE
+from formas.PolignoNaoConvexo import PolignoNaoConvexo # <--- CORRETO (com 'g')
+# ... etc ...
+import numpy as np
 
 class ToolManager:
-    def __init__(self, janela):
-        self.janela = janela
+    def __init__(self, janela_pai):
+        self.janela_pai = janela_pai # Referência à janela (para add formas)
+        self.ferramenta_ativa = None  # 'circulo', 'quadrado', etc.
+        self.desenhando = False
+        self.forma_preview = None
+        self.ponto_inicial = None
 
-    def activate_tool(self, tool_name):
-        self.janela.current_tool = tool_name
-        self.janela.drawing_state = 'await_first_point'
-        self.janela.tentative = None
-        print(f"[tool] {tool_name} ativada.")
+    def set_ferramenta(self, ferramenta):
+        self.ferramenta_ativa = ferramenta
+        self.desenhando = False
+        self.forma_preview = None
+        self.janela_pai.selection_manager.desselecionar_tudo()
+        print(f"Ferramenta ativa: {ferramenta}")
 
-    def handle_mouse_click(self, xw, yw, button):
-        tool = self.janela.current_tool
-        if tool == 'circle':
-            self._handle_circle(xw, yw, button)
-        elif tool == 'polygon':
-            self._handle_polygon(xw, yw, button)
-        elif tool == 'line':
-            self._handle_line(xw, yw, button)
-        elif tool == 'square':
-            self._handle_square(xw, yw, button)
-        elif tool == 'triangle':
-            self._handle_triangle(xw, yw, button)
+# tools.py
 
+    def handle_click(self, x, y, action):
+        
+        # --- LÓGICA ESPECIAL DO POLÍGONO ---
+        if self.ferramenta_ativa == 'poligono':
+            if action == "PRESS":
+                
+                # ### CORREÇÃO DA LINHA FANTASMA (1/2) ###
+                # Atualiza a posição do mouse IMEDIATAMENTE no clique.
+                self.ultimo_mouse_pos_mundo = (x, y) 
+                
+                if not self.desenhando:
+                    # 1º clique: Inicia o polígono
+                    self.desenhando = True
+                    self.ponto_inicial = (x, y) 
+                    self.forma_preview = PolignoNaoConvexo(centro=self.ponto_inicial) # <--- CORRETO (com 'g')
+                else:
+                    # 2º clique em diante:
+                    dist_inicio = np.linalg.norm(np.array((x, y)) - self.ponto_inicial)
+                    if dist_inicio < 10.0: # Hitbox de 10 pixels
+                        self.finalizar_desenho()
+                    else:
+                        self.forma_preview.adicionar_vertice_pelo_mundo(x, y)
+            
+            return True 
+        # --- FIM DA LÓGICA DO POLÍGONO ---
 
-    def handle_mouse_move(self, xw, yw):
-        tent = self.janela.tentative
-        if not tent:
-            return
-        if tent['tool'] == 'circle' and tent['center']:
-            cx, cy = tent['center']
-            tent['radius'] = math.dist((cx, cy), (xw, yw))
-        elif tent['tool'] == 'line' and tent.get('p1'):
-            tent['p2'] = (xw, yw)
-        elif tent['tool'] == 'square' and tent.get('center'):
-            cx, cy = tent['center']
-            dx = abs(xw - cx)
-            dy = abs(yw - cy)
-            tent['lado'] = 2 * max(dx, dy)
-        elif tent['tool'] == 'triangle':
-            verts = tent.get('vertices', [])
-            if len(verts) >= 1:
-                tent['preview_point'] = (xw, yw)
+        if self.ferramenta_ativa is None:
+            return False 
 
+        # Lógica Clicar-Arrastar-Soltar (Circulo, Quadrado, etc.)
+        if action == "PRESS" and not self.desenhando:
+            self.desenhando = True
+            self.ponto_inicial = (x, y)
+            
+            # ### CORREÇÃO DA LINHA FANTASMA (2/2) ###
+            # Atualiza aqui também, para o caso de
+            # você ter uma forma (ex: Linha) que usa
+            # 'ultimo_mouse_pos_mundo' no seu preview.
+            self.ultimo_mouse_pos_mundo = (x, y) 
+            
+            if self.ferramenta_ativa == 'circulo':
+                self.forma_preview = Circulo(centro=self.ponto_inicial, raio=0.0)
+            elif self.ferramenta_ativa == 'quadrado':
+                self.forma_preview = Quadrado(centro=self.ponto_inicial, meio_lado=0.0)
+            elif self.ferramenta_ativa == 'linha':
+                self.forma_preview = Linha(centro=self.ponto_inicial)
+            elif self.ferramenta_ativa == 'triangulo':
+                self.forma_preview = Triangulo(centro=self.ponto_inicial, raio_circunscrito=0.0)
+            
+            return True
 
-    # --------- Ferramentas ---------
-    def _handle_circle(self, xw, yw, button):
-        if button != 0:
-            return
-        if not self.janela.tentative:
-            self.janela.tentative = {'tool': 'circle', 'center': (xw, yw), 'radius': 0}
-            self.janela.drawing_state = 'adjusting'
-            print(f"[circle] centro em ({xw:.2f},{yw:.2f})")
-        else:
-            self._finalize_circle()
-
-    def _finalize_circle(self):
-        t = self.janela.tentative
-        if not t:
-            return
-        cx, cy = t['center']
-        r = t['radius']
-        if r > 0.01:
-            circ = Circulo(r)
-            self.janela.formas.append((circ, cx, cy, (0, 1, 0)))
-            print(f"[circle] raio = {r:.2f}")
-        self._reset()
-
-    def _handle_polygon(self, xw, yw, button):
-        if button != 0:
-            return
-        if not self.janela.tentative:
-            self.janela.tentative = {'tool': 'polygon', 'vertices': [(xw, yw)]}
-            print("[polygon] iniciando...")
-        else:
-            verts = self.janela.tentative['vertices']
-            if len(verts) > 2 and math.dist(verts[0], (xw, yw)) < 0.5:
-                poly = PoligonoNaoConvexo(verts)
-                self.janela.formas.append((poly, 0, 0, (1, 0.8, 0)))
-                print("[polygon] finalizado.")
-                self._reset()
-            else:
-                verts.append((xw, yw))
-
-    def _handle_line(self, xw, yw, button):
-        if button != 0:
-            return
-        if not self.janela.tentative:
-            self.janela.tentative = {'tool': 'line', 'p1': (xw, yw), 'p2': (xw, yw)}
-        else:
-            p1 = self.janela.tentative['p1']
-            line = Linha(p1[0], p1[1], xw, yw)
-            self.janela.formas.append((line, 0, 0, (0, 0.8, 1)))
-            print("[line] finalizada.")
-            self._reset()
+        elif action == "RELEASE" and self.desenhando:
+            self.desenhando = False
+            if self.forma_preview and self.forma_preview.is_valid():
+                 self.janela_pai.adicionar_forma(self.forma_preview)
+            
+            self.forma_preview = None
+            self.ponto_inicial = None
+            return True
+            
+        return False
 
 
+    def handle_drag(self, x, y):
+        if self.desenhando and self.forma_preview:
+            # Arrastar: Atualiza o tamanho da forma de preview
+            dist_x = x - self.ponto_inicial[0]
+            dist_y = y - self.ponto_inicial[1]
 
-    def _handle_square(self, xw, yw, button):
-        if button != 0:
-            return
-        if not self.janela.tentative:
-            # Primeiro clique: define o centro
-            self.janela.tentative = {'tool': 'square', 'center': (xw, yw), 'lado': 0}
-            self.janela.drawing_state = 'adjusting'
-            print(f"[square] centro em ({xw:.2f},{yw:.2f})")
-        else:
-            self._finalize_square()
+            raio = np.linalg.norm((dist_x, dist_y))
+            
+            if isinstance(self.forma_preview, Circulo):
+                # Raio é a distância do centro ao mouse
+                raio = np.linalg.norm(np.array((x, y)) - self.ponto_inicial)
+                self.forma_preview.raio = raio
+          
+            # --- ADICIONE ESTE BLOCO ---
+            elif isinstance(self.forma_preview, Quadrado):
+                # O 'meio_lado' será o maior entre dx e dy
+                # Isso faz um quadrado "perfeito"
+                self.forma_preview.meio_lado = max(dist_x, dist_y)
+            # ---------------------------
+        # --- ADICIONE ESTES BLOCOS ---
+            elif isinstance(self.forma_preview, Linha):
+                # A linha usa o vetor (dx, dy) como seu 'vetor_metade'
+                self.forma_preview.vetor_metade = np.array([dist_x, dist_y])
+            
+            elif isinstance(self.forma_preview, Triangulo):
+                # O triângulo usa o 'raio' como o círculo
+                self.forma_preview.raio_circunscrito = raio
+            # -----------------------------
+            
+            return True # Evento consumido
+        return False
+    
 
-    def _finalize_square(self):
-        t = self.janela.tentative
-        if not t:
-            return
-        cx, cy = t['center']
-        lado = t['lado']
-        if lado > 0.01:
-            sq = Quadrado(lado)
-            self.janela.formas.append((sq, cx, cy, (1, 0, 1)))
-            print(f"[square] lado = {lado:.2f}")
-        self._reset()
+# tools.py
 
+    # ... (depois do handle_drag) ...
 
-    def _handle_triangle(self, xw, yw, button):
-        if button != 0:
-            return
-
-        # Se ainda não começou, inicia lista de vértices
-        if not self.janela.tentative:
-            self.janela.tentative = {'tool': 'triangle', 'vertices': [(xw, yw)]}
-            self.janela.drawing_state = 'adjusting'
-            print(f"[triangle] vértice 1 = ({xw:.2f},{yw:.2f})")
-            return
-
-        tent = self.janela.tentative
-        verts = tent['vertices']
-        verts.append((xw, yw))
-
-        if len(verts) == 2:
-            print(f"[triangle] vértice 2 = ({xw:.2f},{yw:.2f})")
-        elif len(verts) == 3:
-            print(f"[triangle] vértice 3 = ({xw:.2f},{yw:.2f}) — finalizando.")
-            tri = Triangulo(verts[0], verts[1], verts[2])
-            self.janela.formas.append((tri, 0, 0, (1, 1, 0)))
-            self._reset()
-
-    def _finalize_triangle(self):
-        """(opcional, se quiser chamar manualmente depois de 3 vértices)"""
-        tent = self.janela.tentative
-        if not tent:
-            return
-        verts = tent.get('vertices', [])
-        if len(verts) == 3:
-            tri = Triangulo(verts[0], verts[1], verts[2])
-            self.janela.formas.append((tri, 0, 0, (1, 1, 0)))
-            print("[triangle] finalizado.")
-        self._reset()
-
-
-
-
-
-
-    def _reset(self):
-        self.janela.tentative = None
-        self.janela.current_tool = None
-        self.janela.drawing_state = 'idle'
+    def finalizar_desenho(self):
+        """ Função especial para finalizar polígonos (pelo teclado) """
+        if self.ferramenta_ativa == 'poligono' and self.desenhando:
+            print("Finalizando polígono...")
+            if self.forma_preview and self.forma_preview.is_valid():
+                self.janela_pai.adicionar_forma(self.forma_preview)
+            
+            # Limpa o estado
+            self.desenhando = False
+            self.forma_preview = None
+            self.ponto_inicial = None

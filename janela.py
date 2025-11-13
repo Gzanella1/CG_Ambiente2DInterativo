@@ -1,145 +1,97 @@
+# janela.py
 import glfw
 from OpenGL.GL import *
-import math
-from formas.Circulo import Circulo
-from formas.Linha import Linha
-from formas.PolignoNaoConvexo import PoligonoNaoConvexo
-from formas.Quadrado import Quadrado
+import callbacks # Importa o módulo de callbacks
+from tools import ToolManager
 from selection_manager import SelectionManager
 
-class JanelaGLFW:
-    def __init__(self, largura=500, altura=500, left=-20, right=20, bottom=-20, top=20, titulo="Janela"):
-        self.largura = largura
-        self.altura = altura
-        self.left = left
-        self.right = right
-        self.bottom = bottom
-        self.top = top
-        self.titulo = titulo
+class Janela:
+    def __init__(self, width, height, title):
+        self.width = width
+        self.height = height
+        self.window = glfw.create_window(width, height, title, None, None)
+        if not self.window:
+            glfw.terminate()
+            raise Exception("Falha ao criar janela GLFW")
 
-        self.formas = []
-        self.current_tool = None
-        self.drawing_state = 'idle'
-        self.tentative = None
-        self._window = None
-        self._should_terminate = False
+        glfw.make_context_current(self.window)
+        # Define o ponteiro do usuário para esta instância da classe
+        glfw.set_window_user_pointer(self.window, self)
+        
+        # Configura a projeção ortográfica 2D
+        self.setup_projection()
 
+        # Estado da aplicação
+        self.formas = [] # Lista de todas as formas desenhadas
+        
+        # Inicializa os gerenciadores
+        self.tool_manager = ToolManager(self)
+        self.selection_manager = SelectionManager(self)
+        
+        # Configura os callbacks
+        self.set_callbacks()
 
-    # ---------------- Configuração da visualização ----------------
-    def configure_visualization(self):
-        width = max(1, self.largura)
-        height = max(1, self.altura)
-        glViewport(0, 0, width, height)
+    def set_callbacks(self):
+        glfw.set_key_callback(self.window, callbacks.key_callback)
+        glfw.set_mouse_button_callback(self.window, callbacks.mouse_button_callback)
+        glfw.set_cursor_pos_callback(self.window, callbacks.cursor_pos_callback)
+        # (Callback de redimensionamento também é importante)
+        glfw.set_framebuffer_size_callback(self.window, self.framebuffer_size_callback)
 
+    def setup_projection(self):
+        glViewport(0, 0, self.width, self.height)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        glOrtho(self.left, self.right, self.bottom, self.top, -1.0, 1.0)
-
+        # Mapeia coordenadas do mundo (0,0) no canto inferior esquerdo
+        # e (width, height) no canto superior direito
+        glOrtho(0, self.width, 0, self.height, -1, 1)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
+        
+    def converter_coords_tela_para_mundo(self, x_tela, y_tela):
+        # Em nossa projeção glOrtho simples, y precisa ser invertido
+        x_mundo = x_tela
+        y_mundo = self.height - y_tela # GLFW (0,0) é topo-esquerda
+        return x_mundo, y_mundo
 
-    # ---------------- Cancelar desenho ----------------
-    def cancel_drawing(self):
-        if self.drawing_state != 'idle':
-            self.tentative = None
-            self.drawing_state = 'idle'
-            self.current_tool = None
-            print("[tool] desenho cancelado.")
-            return True
-        return False
+    def adicionar_forma(self, forma):
+        self.formas.append(forma)
 
-    # ---------------- Desenhar todas as formas ----------------
-    def desenhar_formas(self):
-        for item in list(self.formas):
-            try:
-                forma, x, y, color = item
-                glColor3f(*color)
-                forma.desenhar(x, y)
-            except Exception:
-                continue
+    def framebuffer_size_callback(self, window, width, height):
+        if height == 0: return # Evita divisão por zero
+        self.width = width
+        self.height = height
+        self.setup_projection() # Reconfigura a projeção com o novo tamanho
 
-        # ---- pré-visualização ----
-        tent = getattr(self, 'tentative', None)
-        if not tent:
-            return
+    def run(self):
+        while not glfw.window_should_close(self.window):
+            # Limpa a tela
+            glClear(GL_COLOR_BUFFER_BIT)
+            glClearColor(0.1, 0.1, 0.1, 1.0) # Fundo escuro
+            
+            # 1. Desenha todas as formas finalizadas
+            for forma in self.formas:
+                forma.desenhar()
 
-        glEnable(GL_LINE_STIPPLE)
-        glLineStipple(1, 0x0F0F)
-        glColor3f(0.6, 0.6, 0.6)
+            # 2. Desenha o preview da ferramenta ativa (se houver)
+            if self.tool_manager.forma_preview:
+                self.tool_manager.forma_preview.desenhar_preview()
+            
+            # (Note: O SelectionManager desenha seus visuais
+            # dentro do método `forma.desenhar()`)
 
-        if tent.get('tool') == 'circle':
-            cx, cy = tent['center']
-            r = tent.get('radius', 0)
-            Circulo(r if r > 0 else 0.01).desenhar(x=cx, y=cy)
-
-        elif tent.get('tool') == 'polygon':
-            verts = tent.get('vertices', [])
-            if len(verts) >= 2:
-                glBegin(GL_LINE_STRIP)
-                for vx, vy in verts:
-                    glVertex2f(vx, vy)
-                glEnd()
-
-        elif tent.get('tool') == 'line':
-            p1 = tent.get('p1')
-            p2 = tent.get('p2')
-            if p1 and p2:
-                glBegin(GL_LINES)
-                glVertex2f(*p1)
-                glVertex2f(*p2)
-                glEnd()
-
-
-        elif tent.get('tool') == 'square':
-            cx, cy = tent['center']
-            lado = tent.get('lado', 0)
-            if lado > 0:
-                from formas.Quadrado import Quadrado
-                Quadrado(lado).desenhar(x=cx, y=cy)
-
-
-        elif tent.get('tool') == 'triangle':
-            verts = tent.get('vertices', [])
-            ptemp = tent.get('preview_point')
-            if len(verts) >= 1:
-                glBegin(GL_LINE_STRIP)
-                for vx, vy in verts:
-                    glVertex2f(vx, vy)
-                if ptemp:
-                    glVertex2f(*ptemp)
-                glEnd()
-
-
-        glDisable(GL_LINE_STIPPLE)
-        glColor3f(1, 1, 1)
-
-    # ---------------- Loop principal ----------------
-    def run(self, render_fn, callback_handler=None):
-        if not glfw.init():
-            raise RuntimeError("Falha ao inicializar GLFW")
-
-        self._window = glfw.create_window(self.largura, self.altura, self.titulo, None, None)
-        if not self._window:
-            glfw.terminate()
-            raise RuntimeError("Falha ao criar janela GLFW")
-        glfw.make_context_current(self._window)
-
-        if callback_handler is not None:
-            glfw.set_key_callback(self._window, callback_handler.on_key)
-            glfw.set_mouse_button_callback(self._window, callback_handler.on_mouse)
-            glfw.set_cursor_pos_callback(self._window, callback_handler.on_cursor_pos)
-            glfw.set_window_size_callback(self._window, callback_handler.on_resize)
-
-        glClearColor(0.0, 0.0, 0.0, 1.0)
-        glEnable(GL_LINE_SMOOTH)
-        glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
-
-        while not glfw.window_should_close(self._window) and not self._should_terminate:
-            render_fn(self)
-            glfw.swap_buffers(self._window)
+            # Troca os buffers e processa eventos
+            glfw.swap_buffers(self.window)
             glfw.poll_events()
 
-        glfw.terminate()
 
-    def close(self):
-        self._should_terminate = True
+
+
+            # --- ADICIONE ESTE MÉTODO ---
+    def remover_forma(self, forma):
+        """ Remove uma forma da lista principal de renderização. """
+        if forma in self.formas:
+            self.formas.remove(forma)
+        else:
+            print("Aviso: Tentativa de remover forma que não está na lista.")
+    # -----------------------------

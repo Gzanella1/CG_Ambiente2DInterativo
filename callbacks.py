@@ -1,83 +1,75 @@
+# callbacks.py
 import glfw
-from tools import ToolManager
-from selection_manager import SelectionManager
 
-class Callbacks:
+# Função para obter a instância da janela a partir do callback
+def get_janela(window_ptr):
+    return glfw.get_window_user_pointer(window_ptr)
 
-
-    def __init__(self, janela):
-        self.janela = janela
-        self.tools = ToolManager(janela)
-        self.selection = SelectionManager(janela)
-        janela.callbacks = self  # permite janela acessar seleção no desenho
-
-
-    def window_to_world(self, x, y):
-        xw = self.janela.left + (x / max(1, self.janela.largura)) * (self.janela.right - self.janela.left)
-        yw = self.janela.top - (y / max(1, self.janela.altura)) * (self.janela.top - self.janela.bottom)
-        return xw, yw
-
-    def on_resize(self, win, width, height):
-        self.janela.largura, self.janela.altura = max(1, width), max(1, height)
-        print(f"[resize] {width}x{height}")
+def key_callback(window_ptr, key, scancode, action, mods):
+    janela = get_janela(window_ptr)
+    if action == glfw.PRESS:
+        # Lógica de finalização ANTES de trocar de ferramenta
+        if key != glfw.KEY_2 and janela.tool_manager.ferramenta_ativa == 'poligono':
+             janela.tool_manager.finalizar_desenho()
 
 
-    def on_mouse(self, win, button, action, mods):
-        mx, my = glfw.get_cursor_pos(win)
-        xw, yw = self.window_to_world(mx, my)
-
-        if button == glfw.MOUSE_BUTTON_LEFT:
-            if action == glfw.PRESS:
-                # Se não estiver desenhando, tenta selecionar
-                if not self.janela.current_tool:
-                    if self.selection.selecionar_forma(xw, yw):
-                        self.selection.iniciar_arraste(xw, yw)
-                    else:
-                        # Clique fora limpa a seleção
-                        self.selection.forma_selecionada = None
-                else:
-                    self.tools.handle_mouse_click(xw, yw, button)
-
-            elif action == glfw.RELEASE:
-                self.selection.finalizar_arraste()
-
-    def on_cursor_pos(self, win, xpos, ypos):
-        xw, yw = self.window_to_world(xpos, ypos)
-
-        # arraste ativo
-        if self.selection.arrastando:
-            self.selection.mover_forma(xw, yw)
-        # hover (preview)
-        elif not self.janela.current_tool:
-            self.selection.verificar_hover(xw, yw)
-        # modo desenho
-        elif self.janela.tentative:
-            self.tools.handle_mouse_move(xw, yw)
-
-
-    def on_key(self, win, key, scancode, action, mods):
-        if action != glfw.PRESS:
-            return
-
-        if key == glfw.KEY_ESCAPE:
-            if not self.janela.cancel_drawing():
-                glfw.set_window_should_close(win, True)
-
-        elif key == glfw.KEY_C:
-            self.janela.formas.clear()
-            print("[debug] formas limpas.")
-
-        elif key == glfw.KEY_1:
-            self.tools.activate_tool('circle')
-
+        if key == glfw.KEY_1:
+            janela.tool_manager.set_ferramenta('circulo')
+        
         elif key == glfw.KEY_2:
-            self.tools.activate_tool('polygon')
-
-        elif key == glfw.KEY_3:
-            self.tools.activate_tool('line')
+            # Lógica do Polígono
+            if janela.tool_manager.ferramenta_ativa != 'poligono':
+                # Se não era polígono, ativa
+                janela.tool_manager.set_ferramenta('poligono')
+            else:
+                # Se já era polígono, pressionar '2' de novo finaliza
+                janela.tool_manager.finalizar_desenho()
 
         elif key == glfw.KEY_4:
-            self.tools.activate_tool('square')
+            janela.tool_manager.set_ferramenta('quadrado')
+        
+        # --- NOSSA NOVA LÓGICA 'M' ---
+        elif key == glfw.KEY_M:
+            janela.selection_manager.toggle_multi_select_mode()
+        # -----------------------------
 
+        # --- ADICIONE ESTE ELIF ---
+        elif key == glfw.KEY_BACKSPACE:
+            janela.selection_manager.delete_selected()
+        # ---------------------------
+
+        elif key == glfw.KEY_ESCAPE:
+            # ESC para limpar seleção e ferramenta
+            janela.tool_manager.set_ferramenta(None)
+            janela.selection_manager.desselecionar_tudo()
+        elif key == glfw.KEY_3:
+            janela.tool_manager.set_ferramenta('linha')
+        
         elif key == glfw.KEY_5:
-            self.tools.activate_tool('triangle')
+            janela.tool_manager.set_ferramenta('triangulo')
+        # --------------------------
+
+def mouse_button_callback(window_ptr, button, action, mods): # <--- PONTO 1: 'mods' TEM QUE ESTAR AQUI
+    janela = get_janela(window_ptr)
+    x, y = glfw.get_cursor_pos(window_ptr)
+    x_mundo, y_mundo = janela.converter_coords_tela_para_mundo(x, y)
+
+    action_str = "PRESS" if action == glfw.PRESS else "RELEASE"
+    
+    if button == glfw.MOUSE_BUTTON_LEFT:
+        if janela.tool_manager.handle_click(x_mundo, y_mundo, action_str):
+            return 
+        
+        # --- PONTO 2: 'mods' TEM QUE SER PASSADO AQUI ---
+        janela.selection_manager.handle_click(x_mundo, y_mundo, action_str, mods)
+
+def cursor_pos_callback(window_ptr, x, y):
+    janela = get_janela(window_ptr)
+    x_mundo, y_mundo = janela.converter_coords_tela_para_mundo(x, y)
+
+    # 1. Tenta arrastar com a ferramenta de desenho
+    if janela.tool_manager.handle_drag(x_mundo, y_mundo):
+        return # Evento foi consumido
+
+    # 2. Se não, tenta arrastar com o gerenciador de seleção
+    janela.selection_manager.handle_drag(x_mundo, y_mundo)

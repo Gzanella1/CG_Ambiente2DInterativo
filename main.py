@@ -1,13 +1,19 @@
-from OpenGL.GL import *
-from janela import JanelaGLFW
-from callbacks import Callbacks
+# main.py
+import glfw
+from janela import Janela
 
-def render(janela):
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    janela.configure_visualization()
-    janela.desenhar_formas()
+def main():
+    if not glfw.init():
+        print("Erro ao inicializar o GLFW")
+        return
+
+    # Instancia a janela principal, que agora controla tudo
+    janela_principal = Janela(800, 600, "Paint 2D Interativo")
+    
+    # O loop principal agora está encapsulado dentro da classe Janela
+    janela_principal.run()
+
+    glfw.terminate()
 
 if __name__ == "__main__":
-    janela = JanelaGLFW(largura=800, altura=800, left=-20, right=20, bottom=-20, top=20, titulo="Desenhando Figuras")
-    callbacks = Callbacks(janela)
-    janela.run(render, callback_handler=callbacks)
+    main()
